@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>ESP32-S3 N16R8 刷机与接线手册</title>
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+body { font-family: "Microsoft YaHei","Segoe UI",sans-serif; font-size: 10.5pt;
+       line-height: 1.75; color: #1c2128; max-width: 100%; }
+h1 { font-size: 21pt; border-bottom: 2.5px solid #2b3a4a; padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 15pt; margin-top: 26px; border-left: 5px solid #2e7d32; padding-left: 10px; }
+h3 { font-size: 12pt; margin-top: 18px; color: #24405e; }
+p { margin: 6px 0; }
+a { color: #1565c0; text-decoration: none; }
+code { background: #f2f4f7; padding: 1px 4px; border-radius: 3px;
+       font-family: Consolas,monospace; font-size: 9pt; }
+pre { background: #f6f8fa; border: 1px solid #e3e7ec; border-radius: 6px;
+      padding: 10px 12px; overflow-x: auto; page-break-inside: avoid; }
+pre code { background: none; padding: 0; font-size: 8.8pt; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0;
+        font-size: 9.5pt; page-break-inside: avoid; }
+th { background: #eef2f6; text-align: left; font-weight: 600; }
+th, td { border: 1px solid #d8dee6; padding: 5px 9px; vertical-align: top; }
+tr:nth-child(even) td { background: #fafbfc; }
+blockquote { margin: 12px 0; padding: 10px 14px; background: #fff8ec;
+             border-left: 4px solid #e0a03a; border-radius: 4px; color: #6b4a12; }
+blockquote a { color: #8a5a00; }
+img { max-width: 100%; display: block; margin: 14px auto;
+      border: 1px solid #dfe4ea; border-radius: 6px; }
+ul, ol { margin: 6px 0 6px 22px; padding: 0; }
+li { margin: 3px 0; }
+hr { border: none; border-top: 1px solid #e1e5ea; margin: 20px 0; }
+strong { color: #16202b; }
+</style></head><body>
+<h1>ESP32-S3 N16R8 → 类 Flipper Zero 多功能板：接线与刷机手册</h1>
+<blockquote>目标板：ESP32-S3 <strong>N16R8</strong>（16 MB Flash + 8 MB PSRAM）<br>固件：<strong>Bruce</strong>（开源，AGPL-3.0，<a href="https://github.com/BruceDevices/firmware">https://github.com/BruceDevices/firmware</a>）<br>外设：ST7789 1.44″ 128×128、microSD、CC1101、PN532（I2C）、6 个按键</blockquote>
+<hr>
+<h2>0. 先把一件事说明白</h2>
+<p><strong>Flipper Zero 的官方固件刷不进 ESP32。</strong> 它的主控是 STM32WB55（ARM Cortex-M4），和 ESP32-S3 是两套完全不同的架构，不存在"移植固件"这回事。</p>
+<p>能做到"功能类似"的，是另一批用 ESP32 重写的开源项目。你给的这套模块（CC1101 + PN532 + ST7789 + SD）里，<strong>Bruce 是支持度最高的一个</strong>：官方功能表里 CC1101 和 PN532 都是原生支持项，而且它的官方 RF Reaper 开发板用的就是 ESP32-S3 + 16MB/8MB，硬件形态和你的几乎一致。</p>
+<p>所以本方案 = <strong>Bruce + 为你这块板子新写的板级配置</strong>。不是刷一个现成 bin，而是按你的引脚重新编译一份。</p>
+<hr>
+<h2>1. 硬件清单</h2>
+<table><thead><tr><th>模块</th><th>建议型号</th><th>关键点</th></tr></thead><tbody><tr><td>主控</td><td>ESP32-S3-DevKitC-1 <strong>N16R8</strong></td><td>16MB Flash / 8MB OPI PSRAM</td></tr><tr><td>屏幕</td><td>ST7789 1.44″ 128×128 SPI</td><td>8 针：VCC/GND/SCL/SDA/RES/DC/CS/BLK</td></tr><tr><td>存储</td><td>microSD 卡模块（SPI）</td><td>卡格式化成 <strong>FAT32</strong>，≤32GB</td></tr><tr><td>Sub-GHz</td><td>CC1101 模块</td><td><strong>必须 3.3V 版</strong>，带天线</td></tr><tr><td>NFC/RFID</td><td>PN532（红板 V3）</td><td>走 <strong>I2C</strong>，拨码 1→ON、2→OFF</td></tr><tr><td>按键</td><td>6× 6×6 轻触开关</td><td>一端接 GPIO，一端接 GND</td></tr></tbody></table>
+<blockquote><strong>供电警告</strong>：CC1101、PN532、ST7789、SD 全部是 3.3V 器件。<strong>VCC 一律接 3V3，不要接 5V</strong>，5V 会烧 CC1101 和 PN532 的逻辑。所有模块必须<strong>共地</strong>。</blockquote>
+<hr>
+<h2>2. 接线</h2>
+<p><img src="接线图.png" alt="接线图"></p>
+<h3>2.1 三路总线</h3>
+<table><thead><tr><th>总线</th><th>用途</th><th>引脚</th></tr></thead><tbody><tr><td>SPI-A</td><td>ST7789 + microSD 共用</td><td>SCK=<strong>12</strong>，MOSI=<strong>11</strong>，MISO=<strong>13</strong></td></tr><tr><td>SPI-B</td><td>CC1101 独占</td><td>SCK=<strong>5</strong>，MOSI=<strong>4</strong>，MISO=<strong>15</strong></td></tr><tr><td>I2C</td><td>PN532</td><td>SDA=<strong>21</strong>，SCL=<strong>18</strong></td></tr></tbody></table>
+<p>屏幕和 SD 共用一组 SPI，靠各自的 CS 分时占用；CC1101 单独一路，避免和屏幕抢总线导致射频收发不稳。</p>
+<h3>2.2 逐针接线</h3>
+<p><strong>ST7789 1.44″</strong></p>
+<table><thead><tr><th>模块引脚</th><th>接到</th></tr></thead><tbody><tr><td>VCC</td><td>3V3</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>SCL / SCK</td><td>GPIO 12</td></tr><tr><td>SDA / MOSI</td><td>GPIO 11</td></tr><tr><td>RES</td><td>GPIO 8</td></tr><tr><td>DC</td><td>GPIO 9</td></tr><tr><td>CS</td><td>GPIO 10</td></tr><tr><td>BLK</td><td>GPIO 7</td></tr></tbody></table>
+<p><strong>microSD 模块</strong></p>
+<table><thead><tr><th>模块引脚</th><th>接到</th></tr></thead><tbody><tr><td>VCC</td><td>3V3</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>SCK</td><td>GPIO 12</td></tr><tr><td>MOSI</td><td>GPIO 11</td></tr><tr><td>MISO</td><td>GPIO 13</td></tr><tr><td>CS</td><td>GPIO 6</td></tr></tbody></table>
+<p><strong>CC1101</strong></p>
+<table><thead><tr><th>模块引脚</th><th>接到</th></tr></thead><tbody><tr><td>VCC</td><td>3V3</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>SCK</td><td>GPIO 5</td></tr><tr><td>MOSI</td><td>GPIO 4</td></tr><tr><td>MISO</td><td>GPIO 15</td></tr><tr><td>CSN</td><td>GPIO 16</td></tr><tr><td>GDO0</td><td>GPIO 17</td></tr><tr><td>GDO2</td><td>不接</td></tr></tbody></table>
+<p><strong>PN532（I2C 模式）</strong></p>
+<table><thead><tr><th>模块引脚</th><th>接到</th></tr></thead><tbody><tr><td>VCC</td><td>3V3</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>SDA</td><td>GPIO 21</td></tr><tr><td>SCL</td><td>GPIO 18</td></tr><tr><td>IRQ</td><td>不接</td></tr><tr><td>RSTO</td><td>不接</td></tr></tbody></table>
+<p><strong>按键</strong>（每个按键一端接 GPIO，另一端接 GND；固件内部已开上拉）</p>
+<table><thead><tr><th>功能</th><th>GPIO</th></tr></thead><tbody><tr><td>OK / 选择</td><td>0（可直接用板载 BOOT 键）</td></tr><tr><td>↑ 上</td><td>41</td></tr><tr><td>↓ 下</td><td>40</td></tr><tr><td>← 左</td><td>39</td></tr><tr><td>→ 右</td><td>38</td></tr><tr><td>返回 / ESC</td><td>42</td></tr></tbody></table>
+<h3>2.3 为什么是这些引脚</h3>
+<p>ESP32-S3 N16R8 有一批引脚被内部占用，接上去必然出问题：</p>
+<table><thead><tr><th>引脚</th><th>占用原因</th></tr></thead><tbody><tr><td>GPIO 26–32</td><td>SPI Flash</td></tr><tr><td>GPIO 33–37</td><td>八线 PSRAM（R8 特有）</td></tr><tr><td>GPIO 19 / 20</td><td>原生 USB D− / D+</td></tr><tr><td>GPIO 43 / 44</td><td>UART0（留给串口日志）</td></tr><tr><td><strong>GPIO 48</strong></td><td><strong>DevKitC-1 板载 RGB 灯</strong>，所以 I2C 没用它</td></tr><tr><td>GPIO 0 / 45 / 46</td><td>启动 strapping（0 用作按键是安全的，只是按住上电会进下载模式）</td></tr></tbody></table>
+<hr>
+<h2>3. 刷机</h2>
+<blockquote>✅ <strong>这一步已经替你做完了。</strong> 固件已编译并烧录到 COM8，esptool 校验通过（<code>Hash of data verified</code>）。<br><br>- 合并镜像：<code>F:\esp32-build\firmware-main\Bruce-s3-n16r8-multitool.bin</code>（3,769,568 字节）<br>- 占用：3.7 MB / 16 MB（22.1%）<br><br>⚠️ <strong>烧完必须按一下板上的 RST 键（或拔插一次 USB）才会跑应用。</strong><br>ESP32-S3 走原生 USB 复位时会强制进入下载模式，串口会停在<br><code>boot:0x0 (DOWNLOAD(USB/UART0))</code> + <code>waiting for download</code>，这是正常现象，不是烧录失败。</blockquote>
+<h3>方式 A：PlatformIO 直接烧</h3>
+<pre><code>cd F:\esp32-build\firmware-main
+$env:PATH = &quot;F:\pio-core\bin;$env:PATH&quot;
+$env:PLATFORMIO_CORE_DIR = &#x27;F:\pio-core&#x27;
+python -m platformio run -e s3-n16r8-multitool -t upload --upload-port COM8</code></pre>
+<h3>方式 B：用 esptool 烧合并镜像（本次用的就是这条）</h3>
+<pre><code>python -m esptool --chip esp32s3 --port COM8 --baud 921600 `
+  write-flash 0x0 &quot;Bruce-s3-n16r8-multitool.bin&quot;</code></pre>
+<p>合并镜像已经把 bootloader（0x0）、分区表（0x8000）、应用（0x10000）打包在一起，只需要烧 0x0 一个地址。</p>
+<h3>进下载模式</h3>
+<p>正常情况下 esptool 会自动复位。如果连不上：<strong>按住 BOOT（GPIO0）不放 → 点一下 RST → 松开 BOOT</strong>。</p>
+<hr>
+<h2>4. 第一次开机</h2>
+<ol><li>屏幕亮起后进 <code>Config</code>：</li></ol>
+<ul><li><strong>RF Module</strong> 选 <code>CC1101</code></li><li><strong>RFID Module</strong> 选 <code>PN532 I2C</code></li><li>调亮度、屏幕方向</li></ul>
+<ol><li>插卡后进 <code>Files</code> 确认 SD 挂载成功。</li><li>进 <code>RF</code> → <code>Config</code> 确认频段（433/315/868 MHz），再试 <code>Scan</code>。</li></ol>
+<hr>
+<h2>5. 这套硬件能做什么、不能做什么</h2>
+<p><strong>能用</strong>：Sub-GHz 收发/频谱/重放（CC1101）、NFC/RFID 读卡写卡（PN532）、BadUSB（S3 原生 USB）、WiFi/BLE 相关功能、SD 文件管理、JS 脚本解释器。</p>
+<p><strong>受限</strong>：</p>
+<ul><li><strong>PN532 的卡模拟很弱</strong>——只支持 NDEF 和 ISO14443-4，不像 Flipper 那样能模拟大部分卡。想要完整模拟得换 ST25R3916。</li><li>1.44″ / 128×128 的屏幕能跑，但字很小、一屏信息少，属于"能用不舒适"。</li><li>没有红外收发、没有 iButton、没有 NRF24（这些需要额外模块；固件的 IR/RF 单针模块引脚我留了 GPIO 1/2/18 可选）。</li></ul>
+<hr>
+<h2>6. 常见问题</h2>
+<table><thead><tr><th>现象</th><th>处理</th></tr></thead><tbody><tr><td>白屏 / 花屏 / 闪</td><td>杜邦线太长，把 <code>pins_arduino.h</code> 里 <code>SPI_FREQUENCY</code> 从 27000000 降到 20000000</td></tr><tr><td>颜色红蓝反了</td><td><code>TFT_RGB_ORDER</code> 从 <code>0</code> 改成 <code>1</code></td></tr><tr><td>画面反色</td><td>加 <code>#define TFT_INVERSION_ON</code></td></tr><tr><td>屏幕不亮</td><td>检查 BLK 是否接 GPIO 7，以及亮度设置是否被调到 0</td></tr><tr><td>SD 挂载失败</td><td>卡必须 FAT32；CS 必须是 GPIO 6；确认 3.3V 供电够</td></tr><tr><td>PN532 初始化失败</td><td>拨码是不是 I2C（1→ON、2→OFF）；SDA/SCL 有没有接反；模块是否 3.3V</td></tr><tr><td>CC1101 收不到信号</td><td>天线接了没；GDO0 必须接 GPIO 17；模块是不是 3.3V 版本</td></tr><tr><td>烧录时报 "Failed to connect"</td><td>手动进下载模式（BOOT + RST）</td></tr><tr><td>无线一开就重启</td><td>供电不足，给 3.3V 加个大电容或换独立 LDO</td></tr></tbody></table>
+<hr>
+<h2>7. 我改动/新增了什么</h2>
+<p>为了让你这块板能编译，我在 Bruce 源码里加了这些东西（都可复现）：</p>
+<table><thead><tr><th>文件</th><th>作用</th></tr></thead><tbody><tr><td><code>boards/s3-n16r8-multitool/pins_arduino.h</code></td><td>新增：本板全部引脚定义</td></tr><tr><td><code>boards/s3-n16r8-multitool/interface.cpp</code></td><td>新增：按键扫描、背光、休眠、关机</td></tr><tr><td><code>boards/s3-n16r8-multitool/s3-n16r8-multitool.ini</code></td><td>新增：编译环境</td></tr><tr><td><code>boards/_boards_json/s3-n16r8-multitool.json</code></td><td>新增：板卡描述（16MB Flash / OPI PSRAM）</td></tr><tr><td><code>boards/pinouts/pins_arduino.h</code></td><td>加一行分支，指向新板</td></tr><tr><td><code>platformio.ini</code></td><td>注册新环境、把工具链下载地址改成镜像、把包目录指到 F 盘</td></tr></tbody></table>
+<p>改引脚只需要动第一个文件，改完重新 <code>pio run</code> 即可。</p>
+<h3>构建环境（都在 F 盘，没占 C 盘）</h3>
+<table><thead><tr><th>路径</th><th>内容</th></tr></thead><tbody><tr><td><code>F:\esp32-build\firmware-main</code></td><td>Bruce 源码 + 本板配置 + 编译产物</td></tr><tr><td><code>F:\pio</code></td><td>ESP32-S3 工具链、框架库、依赖库（约 4.6 GB）</td></tr><tr><td><code>F:\pio-core</code></td><td>PlatformIO core、编译器、uv 虚拟环境</td></tr></tbody></table>
+<p>为了在这台机器上跑通，额外处理了 4 个环境问题（换台机器一般不需要）：</p>
+<ol><li><strong>GitHub 下载太慢</strong> → 全部改走 <code>ghfast.top</code> 镜像（git 全局 <code>insteadOf</code>、<code>platform.json</code>、各 <code>tools.json</code>）。</li><li><strong>Windows 260 字符路径限制</strong> → 包目录挪到 <code>F:\pio</code> 这种极短路径。</li><li><strong>构建脚本要调 <code>pio</code> 命令</strong> → 生成 <code>F:\pio-core\bin\pio.cmd</code> 垫片。</li><li><strong><code>libnet80211.a</code> 补丁脚本用错工具链前缀</strong> → 手动用 <code>xtensa-esp-elf-objcopy</code> 打上 <code>--weaken-symbol=ieee80211_raw_frame_sanity_check</code> 并补 <code>.patched</code> 标记。</li></ol>
+<p>另外两处依赖调整：</p>
+<ul><li><code>PNGdec</code> 用最新版（Bruce 的回调返回 <code>int</code>，1.1.2 是 <code>void</code>，签名不兼容）。</li><li><code>ESP8266Audio</code> 改为本地 <code>lib/ESP8266Audio</code>（它的 opus 子模块在 gitlab 上 504，库管理器拉不下来）。</li></ul>
+<hr>
+<h2>8. 合规提醒</h2>
+<p>这套硬件本身是合法的通用电子模块，但它是<strong>双用途</strong>的：</p>
+<ul><li>只能对自己拥有的设备、自己的门禁卡、自己的遥控器做实验。</li><li>用 CC1101 录制并重放<strong>他人</strong>的车钥匙/车库门/门禁信号，或用 PN532 复制<strong>他人</strong>的门禁卡，在中国可能触犯《刑法》第 285 条（非法获取计算机信息系统数据）及《无线电管理条例》，属于违法行为。</li><li><strong>射频干扰（jamming）在任何情况下都违法</strong>，不要用固件里的 Jammer 功能。</li></ul>
+<p>工具怎么用取决于人。请把它当学习射频和 NFC 原理的实验平台。</p>
+</body></html>
