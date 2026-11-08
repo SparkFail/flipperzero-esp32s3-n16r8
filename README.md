@@ -28,3 +28,4 @@ Use the flash tool inside the `工具` folder to write firmware to ESP32-S3 dire
 You can open the project in VSCode with PlatformIO extension.
 All other screen options are commented out in source code.
 Just uncomment the target screen definition and recompile.
+This project is for study only. Unauthorized illegal use is forbidden. Users take full responsibility for their actions.
